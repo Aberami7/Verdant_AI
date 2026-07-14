@@ -1,63 +1,80 @@
 import os
 import cv2
 import logging
-from paddleocr import PaddleOCR
+import easyocr
 
 logger = logging.getLogger("app.ocr")
 
-# Singleton PaddleOCR instance
+# Singleton EasyOCR reader
 _reader = None
 
 
 def get_reader():
     """
-    Lazy-load PaddleOCR only once.
+    Lazy load EasyOCR model only once.
     """
+
     global _reader
 
     if _reader is None:
-        logger.info("=" * 60)
-        logger.info("Initializing PaddleOCR Engine...")
+        try:
+            logger.info("=" * 60)
+            logger.info("Initializing EasyOCR Engine...")
 
-        _reader = PaddleOCR(
-            lang="en",
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False
-        )
+            _reader = easyocr.Reader(
+                ['en'],
+                gpu=False
+            )
 
-        logger.info("PaddleOCR initialized successfully.")
-        logger.info("=" * 60)
+            logger.info("EasyOCR initialized successfully.")
+            logger.info("=" * 60)
+
+        except Exception as e:
+            logger.exception(
+                f"EasyOCR initialization failed: {str(e)}"
+            )
+            raise
 
     return _reader
 
 
+
 def preprocess_image(image_path):
     """
-    Improve contrast for better OCR accuracy.
+    Improve image quality before OCR.
     """
+
     image = cv2.imread(image_path)
 
     if image is None:
         raise ValueError(
-            f"OpenCV could not open image: {image_path}"
+            f"OpenCV cannot read image: {image_path}"
         )
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
+    # Convert to grayscale
+    gray = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY
+    )
+
+
+    # Improve contrast
     clahe = cv2.createCLAHE(
         clipLimit=3.0,
-        tileGridSize=(8, 8)
+        tileGridSize=(8,8)
     )
 
     enhanced = clahe.apply(gray)
 
+
     return enhanced
+
 
 
 def extract_text(image_path: str) -> str:
     """
-    Extract ingredient text using PaddleOCR.
+    Extract ingredient text using EasyOCR.
     """
 
     if not os.path.exists(image_path):
@@ -65,45 +82,59 @@ def extract_text(image_path: str) -> str:
             f"Image not found: {image_path}"
         )
 
+
     logger.info("=" * 60)
-    logger.info("Starting OCR...")
-    logger.info(f"Image: {image_path}")
+    logger.info("Starting EasyOCR")
+    logger.info(f"Image Path: {image_path}")
 
-    processed = preprocess_image(image_path)
-
-    temp_path = image_path + "_processed.jpg"
-
-    cv2.imwrite(temp_path, processed)
 
     try:
 
+        # Image preprocessing
+        processed_image = preprocess_image(image_path)
+
+
+        # Load OCR engine
         reader = get_reader()
 
-        result = reader.predict(temp_path)
 
-        extracted_lines = []
+        logger.info("Running OCR detection...")
 
-        for page in result:
 
-            texts = page.get("rec_texts", [])
+        result = reader.readtext(
+            processed_image,
+            detail=0,
+            paragraph=True,
+            contrast_ths=0.1,
+            adjust_contrast=0.5
+        )
 
-            for text in texts:
-                if text.strip():
-                    extracted_lines.append(text.strip())
 
-        extracted_content = "\n".join(extracted_lines)
+        extracted_text = "\n".join(result).strip()
 
-        logger.info(f"Detected {len(extracted_lines)} text lines.")
 
-        if not extracted_content.strip():
-            logger.warning("No text detected.")
+        logger.info(
+            f"OCR detected {len(result)} text blocks"
+        )
 
-        logger.info("OCR completed successfully.")
+
+        if not extracted_text:
+            logger.warning(
+                "No text detected from image"
+            )
+
+
+        logger.info("EasyOCR completed successfully")
         logger.info("=" * 60)
 
-        return extracted_content
 
-    finally:
+        return extracted_text
 
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+
+    except Exception as e:
+
+        logger.exception(
+            f"OCR processing failed: {str(e)}"
+        )
+
+        raise
