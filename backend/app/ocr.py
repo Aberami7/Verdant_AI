@@ -1,76 +1,106 @@
-import easyocr
-import cv2
-import os
+import json
 import logging
+from sqlalchemy.orm import Session
 
-logger = logging.getLogger("app.ocr")
+from app.agent import analyze_ingredients
+from app.models import AnalysisReport
+from app.utils import delete_uploaded_file
+from app.schemas import report_to_schema
 
-# Singleton reader instance
-_reader = None
+logger = logging.getLogger("app.services")
 
 
-def get_reader():
+class AnalysisError(Exception):
+    """Raised when the pipeline cannot produce a valid analysis (e.g. empty OCR)."""
+
+
+def analyze_product_service(
+    db: Session,
+    username: str,
+    product_name: str,
+    company_name: str,
+    image_path: str
+):
     """
-    Lazy-loads the EasyOCR reader instance exactly once to maximize
-    RAM efficiency and avoid cold-start degradation on subsequent requests.
+    Complete orchestrated workflow:
+    Image Upload ──> OCR (Bypassed for Testing) ──> LangGraph LLM Safety Analysis ──> Database Sync
+
+    Returns an AnalysisReportOut on success.
     """
-    global _reader
-    if _reader is None:
-        logger.info("Initializing EasyOCR Engine...")
-        _reader = easyocr.Reader(
-            ['en'],
-            gpu=False  # Set to True if your deployment server has an NVIDIA CUDA card
+
+    logger.info("=" * 60)
+    logger.info("OCR BYPASS ENABLED")
+    logger.info(f"Image Path: {image_path}")
+
+    # ------------------------------------------------------------------
+    # OCR BYPASS (TESTING ONLY)
+    # ------------------------------------------------------------------
+    ingredients_raw = """
+    Water,
+    Glycerin,
+    Sodium Benzoate,
+    Citric Acid,
+    Fragrance
+    """
+
+    logger.info(f"Dummy Ingredients:\n{ingredients_raw}")
+
+    if not ingredients_raw or not ingredients_raw.strip():
+        delete_uploaded_file(image_path)
+        raise AnalysisError(
+            "No text detected from image labels. Ensure good lighting and crisp text focus."
         )
-    return _reader
 
+    # ------------------------------------------------------------------
+    # AI ANALYSIS
+    # ------------------------------------------------------------------
+    logger.info("Starting AI Analysis...")
 
-def preprocess_image(image_path):
-    """
-    Optimizes contrast and readability for real-world curved packaging labels
-    without stripping deep textual gradient characteristics.
-    """
-    image = cv2.imread(image_path)
-    if image is None:
-        raise ValueError(f"OpenCV could not open or decode the image file at: {image_path}")
-
-    # 1. Transition to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    # 2. Apply Adaptive Histogram Equalization (CLAHE)
-    # This maximizes contrast between text and background, countering glare and dynamic shadows
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    enhanced_gray = clahe.apply(gray)
-
-    # Note: We omit hard Otsu thresholding here because EasyOCR's deep neural networks
-    # preserve higher accuracy when handling continuous text edge gradients.
-    return enhanced_gray
-
-
-def extract_text(image_path: str) -> str:
-    """
-    Coordinates label preprocessing and extracts structured ingredient lists.
-    """
-    if not os.path.exists(image_path):
-        raise FileNotFoundError(f"Target label file not found on disk: {image_path}")
-
-    # Preprocess the file matrix safely
-    processed_matrix = preprocess_image(image_path)
-
-    # Call the singleton reader instance
-    ocr_engine = get_reader()
-
-    # Read layout strings
-    result = ocr_engine.readtext(
-        processed_matrix,
-        detail=0,         # Returns flat strings instead of complex bounding boxes
-        paragraph=True,   # Merges close text lines together—perfect for ingredient blocks
-        contrast_ths=0.1, # Gives EasyOCR permission to try harder if the label contrast is low
-        adjust_contrast=0.5
+    result = analyze_ingredients(
+        product_name=product_name,
+        company_name=company_name,
+        ingredients=ingredients_raw
     )
 
-    extracted_content = "\n".join(result).strip()
+    logger.info("AI Analysis Completed")
 
-    if not extracted_content:
-        logger.warning(f"OCR execution finished with zero parsed characters for file: {image_path}")
+    # ------------------------------------------------------------------
+    # DATABASE SAVE
+    # ------------------------------------------------------------------
+    report = AnalysisReport(
+        username=username,
+        product_name=product_name,
+        company_name=company_name,
+        image_path=image_path,
+        ingredients_raw=ingredients_raw,
+        ingredients_list=json.dumps(result.get("ingredients_list", [])),
+        ingredients_details=json.dumps(result.get("ingredients_details", [])),
+        safety_score=float(result.get("safety_score", 0.0)),
+        safety_level=result.get("safety_level", "Hazardous"),
+        allergens=json.dumps(result.get("allergens", [])),
+        summary=result.get("summary", ""),
+        recommendations=json.dumps(result.get("recommendations", [])),
+    )
 
-    return extracted_content
+    try:
+        logger.info("Saving report to database...")
+
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+
+        logger.info("Database save successful.")
+
+    except Exception as db_err:
+        db.rollback()
+        logger.exception("Database save failed.")
+        delete_uploaded_file(image_path)
+
+        raise AnalysisError(
+            f"Failed to save analysis: {str(db_err)}"
+        )
+
+    logger.info("Analysis completed successfully.")
+    logger.info("=" * 60)
+
+    return report_to_schema(report)
