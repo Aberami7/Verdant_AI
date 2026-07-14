@@ -1,5 +1,5 @@
 import os
-from typing import TypedDict, List
+from typing import TypedDict, List, Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
@@ -9,17 +9,28 @@ from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
 from app.prompts import SYSTEM_PROMPT, USER_PROMPT
 
+SafetyLevel = Literal["Safe", "Moderate", "Hazardous"]
+
+
 # ---------------- PYDANTIC RESPONSE SCHEMA ----------------
-# This guarantees that the LLM returns structured data exactly in this layout
-class ProductAnalysis(BaseModel):
-    eco_score: int = Field(description="Eco Score from 1 to 10 based on environmental impact")
-    health_risk: str = Field(description="Health risk assessment level or description")
-    environment_score: int = Field(description="Specific environment breakdown score")
-    greenwashing_verdict: str = Field(description="Analysis on whether the product uses fake eco claims")
-    hidden_chemicals: str = Field(description="Any identified hidden harmful chemicals or additives")
-    safe_alternatives: str = Field(description="Suggestions for safer product alternatives")
-    confidence_score: float = Field(description="The AI's confidence score in this evaluation")
-    ai_summary: str = Field(description="A concise narrative summarizing the overall findings")
+# This guarantees the LLM returns structured data exactly matching the frontend's
+# AnalysisReport contract (src/types.ts).
+class IngredientDetailSchema(BaseModel):
+    name: str = Field(description="The ingredient or chemical compound name")
+    safety: SafetyLevel = Field(description="Safe, Moderate, or Hazardous")
+    description: str = Field(description="Short explanation of what it is and any safety notes")
+    category: str = Field(description="Functional category, e.g. Preservative, Emulsifier, Colorant")
+
+
+class ProductSafetyAnalysis(BaseModel):
+    ingredients_list: List[str] = Field(description="Clean list of individual ingredient names parsed from the raw text")
+    safety_score: float = Field(description="Overall safety score from 0 (most hazardous) to 100 (safest)")
+    safety_level: SafetyLevel = Field(description="Overall safety level: Safe, Moderate, or Hazardous")
+    allergens: List[str] = Field(description="Common allergens detected, empty list if none")
+    ingredients_details: List[IngredientDetailSchema] = Field(description="Per-ingredient safety breakdown")
+    summary: str = Field(description="2-3 sentence clinical summary of the overall findings")
+    recommendations: List[str] = Field(description="Actionable safety recommendations for the consumer")
+
 
 # ---------------- STATE ----------------
 class AgentState(TypedDict):
@@ -37,7 +48,19 @@ raw_llm = ChatGroq(
 )
 
 # Bind the Pydantic schema natively to force structured JSON responses
-llm = raw_llm.with_structured_output(ProductAnalysis)
+llm = raw_llm.with_structured_output(ProductSafetyAnalysis)
+
+
+def _fallback_result(error_message: str) -> dict:
+    return {
+        "ingredients_list": [],
+        "safety_score": 0.0,
+        "safety_level": "Hazardous",
+        "allergens": [],
+        "ingredients_details": [],
+        "summary": f"Unable to complete safety analysis: {error_message}",
+        "recommendations": ["Re-scan the product with a clearer image and try again."],
+    }
 
 
 # ---------------- AGENT NODE ----------------
@@ -54,36 +77,22 @@ def analyze_product(state: AgentState):
     ]
 
     try:
-        # Thanks to .with_structured_output, response is already an instantiated ProductAnalysis Pydantic object
+        # Thanks to .with_structured_output, response is already an instantiated
+        # ProductSafetyAnalysis Pydantic object.
         response = llm.invoke(messages)
-        result = response.model_dump() # Convert safely to a standard Python dictionary
-
+        result = response.model_dump()
     except Exception as e:
-        # Fallback gracefully if API fails or cannot format
-        result = {
-            "eco_score": 0,
-            "health_risk": "Unknown",
-            "environment_score": 0,
-            "greenwashing_verdict": "Unable to Analyze",
-            "hidden_chemicals": "",
-            "safe_alternatives": "",
-            "confidence_score": 0.0,
-            "ai_summary": f"Structured parsing failed or model dropped connection: {str(e)}"
-        }
+        result = _fallback_result(str(e))
 
-    # Return ONLY the state keys that are being updated (LangGraph merges this automatically)
     return {"result": result}
 
 
 # ---------------- GRAPH ----------------
 def build_graph():
-    # Note: StateGraph handles state transitions smoothly using update dictionaries
     workflow = StateGraph(AgentState)
-
     workflow.add_node("analyze_product", analyze_product)
     workflow.set_entry_point("analyze_product")
     workflow.add_edge("analyze_product", END)
-
     return workflow.compile()
 
 
@@ -98,7 +107,6 @@ def run_agent(product_name: str, company_name: str, ingredients: str) -> dict:
         "ingredients": ingredients,
         "result": {}
     }
-
     final_state = graph.invoke(initial_state)
     return final_state["result"]
 
@@ -108,13 +116,4 @@ def analyze_ingredients(product_name: str, company_name: str, ingredients: str) 
     try:
         return run_agent(product_name, company_name, ingredients)
     except Exception as e:
-        return {
-            "eco_score": 0,
-            "health_risk": "Unknown",
-            "environment_score": 0,
-            "greenwashing_verdict": "Analysis Failed",
-            "hidden_chemicals": "",
-            "safe_alternatives": "",
-            "confidence_score": 0.0,
-            "ai_summary": f"Critical execution error: {str(e)}"
-        }
+        return _fallback_result(str(e))

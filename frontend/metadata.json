@@ -1,0 +1,6 @@
+{
+  "name": "Verdant AI",
+  "description": "Durable, high-precision product ingredient analyzer featuring automated OCR extraction, allergen alerts, hazard rating breakdown, and searchable historical report storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

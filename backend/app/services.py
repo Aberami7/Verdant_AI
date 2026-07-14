@@ -1,3 +1,4 @@
+import json
 import logging
 from sqlalchemy.orm import Session
 
@@ -5,8 +6,13 @@ from app.ocr import extract_text
 from app.agent import analyze_ingredients
 from app.models import AnalysisReport
 from app.utils import delete_uploaded_file
+from app.schemas import report_to_schema
 
 logger = logging.getLogger("app.services")
+
+
+class AnalysisError(Exception):
+    """Raised when the pipeline cannot produce a valid analysis (e.g. empty OCR)."""
 
 
 def analyze_product_service(
@@ -15,94 +21,57 @@ def analyze_product_service(
     product_name: str,
     company_name: str,
     image_path: str
-) -> dict:
+):
     """
     Complete orchestrated workflow:
-    Image Processing ──> Adaptive OCR ──> LangGraph LLM Analytics ──> Database Sync
+    Image Upload ──> Adaptive OCR ──> LangGraph LLM Safety Analysis ──> Database Sync
+
+    Returns an AnalysisReportOut (matching the frontend's AnalysisReport type) on
+    success. Raises AnalysisError on failure so the router can turn it into a
+    proper HTTP error response.
     """
+    # 1. Run Text Extraction
+    ingredients_raw = extract_text(image_path)
+
+    if not ingredients_raw or not ingredients_raw.strip():
+        delete_uploaded_file(image_path)
+        raise AnalysisError(
+            "No text detected from image labels. Ensure good lighting and crisp text focus."
+        )
+
+    # 2. Run LangGraph Multi-Agent Safety Analysis
+    result = analyze_ingredients(
+        product_name=product_name,
+        company_name=company_name,
+        ingredients=ingredients_raw
+    )
+
+    # 3. Create DB Record (lists/objects stored as JSON text columns)
+    report = AnalysisReport(
+        username=username,
+        product_name=product_name,
+        company_name=company_name,
+        image_path=image_path,
+        ingredients_raw=ingredients_raw,
+        ingredients_list=json.dumps(result.get("ingredients_list", [])),
+        ingredients_details=json.dumps(result.get("ingredients_details", [])),
+        safety_score=float(result.get("safety_score", 0.0)),
+        safety_level=result.get("safety_level", "Hazardous"),
+        allergens=json.dumps(result.get("allergens", [])),
+        summary=result.get("summary", ""),
+        recommendations=json.dumps(result.get("recommendations", [])),
+    )
+
     try:
-        # 1. Run Text Extraction
-        ingredients = extract_text(image_path)
-
-        if not ingredients or not ingredients.strip():
-            delete_uploaded_file(image_path)
-            return {
-                "success": False,
-                "message": "No text detected from image labels. Ensure good lighting and crisp text focus.",
-                "eco_score": 0,
-                "health_risk": "Unknown",
-                "environment_score": 0,
-                "greenwashing_verdict": "Unanalyzed",
-                "hidden_chemicals": "",
-                "safe_alternatives": "",
-                "confidence_score": 0.0,
-                "ai_summary": "OCR processing returned empty text characters."
-            }
-
-        # 2. Run LangGraph Multi-Agent Audit Analysis
-        result = analyze_ingredients(
-            product_name=product_name,
-            company_name=company_name,
-            ingredients=ingredients
-        )
-
-        # 3. Create Model Record with Safe Default Fallbacks
-        report = AnalysisReport(
-            username=username,
-            product_name=product_name,
-            company_name=company_name,
-            ingredients=ingredients,
-            eco_score=result.get("eco_score", 0),
-            health_risk=result.get("health_risk", "Unknown"),
-            environment_score=result.get("environment_score", 0),
-            greenwashing_verdict=result.get("greenwashing_verdict", "Unknown"),
-            hidden_chemicals=result.get("hidden_chemicals", ""),
-            safe_alternatives=result.get("safe_alternatives", ""),
-            confidence_score=result.get("confidence_score", 0.0),
-            ai_summary=result.get("ai_summary", "")
-        )
-
-        # 4. Transaction Block
-        try:
-            db.add(report)
-            db.commit()
-            db.refresh(report)
-        except Exception as db_err:
-            db.rollback()  # Erase session footprints cleanly
-            logger.error(f"Database write barrier hit: {str(db_err)}")
-            raise db_err
-
-        # 5. Clean up temporary server storage files
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+    except Exception as db_err:
+        db.rollback()
+        logger.error(f"Database write barrier hit: {str(db_err)}")
         delete_uploaded_file(image_path)
+        raise AnalysisError(f"Failed to save analysis: {str(db_err)}")
 
-        # 6. Flat Response layout mirroring your AnalyzeResponse schema
-        return {
-            "success": True,
-            "message": "Analysis completed successfully.",
-            "id": report.id,
-            "eco_score": report.eco_score,
-            "health_risk": report.health_risk,
-            "environment_score": report.environment_score,
-            "greenwashing_verdict": report.greenwashing_verdict,
-            "hidden_chemicals": report.hidden_chemicals,
-            "safe_alternatives": report.safe_alternatives,
-            "confidence_score": report.confidence_score,
-            "ai_summary": report.ai_summary
-        }
-
-    except Exception as e:
-        logger.error(f"Pipeline processing failed: {str(e)}")
-        # Safeguard file system from clogging on terminal execution drops
-        delete_uploaded_file(image_path)
-        return {
-            "success": False,
-            "message": f"Pipeline dropped connection: {str(e)}",
-            "eco_score": 0,
-            "health_risk": "Unknown",
-            "environment_score": 0,
-            "greenwashing_verdict": "Analysis Aborted",
-            "hidden_chemicals": "",
-            "safe_alternatives": "",
-            "confidence_score": 0.0,
-            "ai_summary": "System error encountered during data collection."
-        }
+    # Note: image is intentionally KEPT on disk (not deleted) — the frontend's
+    # History detail panel renders it via <img src={report.image_path}>.
+    return report_to_schema(report)

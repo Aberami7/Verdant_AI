@@ -69,8 +69,8 @@ def extract_text(image_path: str) -> str:
     )
 
     extracted_content = "\n".join(result).strip()
-    
+
     if not extracted_content:
         logger.warning(f"OCR execution finished with zero parsed characters for file: {image_path}")
-        
+
     return extracted_content
