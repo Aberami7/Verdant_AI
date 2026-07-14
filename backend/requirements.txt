@@ -13,11 +13,14 @@ passlib==1.7.4
 bcrypt==4.2.0
 itsdangerous==2.2.0
 
-easyocr==1.7.2
+# OCR
+paddleocr==2.8.1
+paddlepaddle==2.6.2
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
 Pillow==10.4.0
 
+# AI
 langchain==0.3.7
 langchain-core==0.3.17
 langchain-groq==0.2.0
