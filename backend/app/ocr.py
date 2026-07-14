@@ -5,25 +5,28 @@ import easyocr
 
 logger = logging.getLogger("app.ocr")
 
-# Singleton EasyOCR reader
+
+# Singleton EasyOCR model
 _reader = None
 
 
 def get_reader():
     """
-    Lazy load EasyOCR model only once.
+    Load EasyOCR model only once.
     """
 
     global _reader
 
     if _reader is None:
+
         try:
             logger.info("=" * 60)
             logger.info("Initializing EasyOCR Engine...")
 
             _reader = easyocr.Reader(
                 ['en'],
-                gpu=False
+                gpu=False,
+                verbose=False
             )
 
             logger.info("EasyOCR initialized successfully.")
@@ -39,16 +42,18 @@ def get_reader():
 
 
 
-def preprocess_image(image_path):
+def preprocess_image(image_path: str):
     """
-    Improve image quality before OCR.
+    Resize and improve image quality
+    before OCR processing.
     """
 
     image = cv2.imread(image_path)
 
+
     if image is None:
         raise ValueError(
-            f"OpenCV cannot read image: {image_path}"
+            f"Cannot open image: {image_path}"
         )
 
 
@@ -59,10 +64,26 @@ def preprocess_image(image_path):
     )
 
 
+    # Resize large images to reduce OCR time
+    height, width = gray.shape
+
+    if width > 1200:
+
+        scale = 1200 / width
+
+        gray = cv2.resize(
+            gray,
+            None,
+            fx=scale,
+            fy=scale,
+            interpolation=cv2.INTER_AREA
+        )
+
+
     # Improve contrast
     clahe = cv2.createCLAHE(
-        clipLimit=3.0,
-        tileGridSize=(8,8)
+        clipLimit=2.0,
+        tileGridSize=(8, 8)
     )
 
     enhanced = clahe.apply(gray)
@@ -78,63 +99,75 @@ def extract_text(image_path: str) -> str:
     """
 
     if not os.path.exists(image_path):
+
         raise FileNotFoundError(
             f"Image not found: {image_path}"
         )
 
 
     logger.info("=" * 60)
-    logger.info("Starting EasyOCR")
-    logger.info(f"Image Path: {image_path}")
+    logger.info("OCR Started")
+    logger.info(f"Image: {image_path}")
 
 
     try:
 
-        # Image preprocessing
-        processed_image = preprocess_image(image_path)
-
-
-        # Load OCR engine
-        reader = get_reader()
-
-
-        logger.info("Running OCR detection...")
-
-
-        result = reader.readtext(
-            processed_image,
-            detail=0,
-            paragraph=True,
-            contrast_ths=0.1,
-            adjust_contrast=0.5
+        # Preprocess image
+        processed_image = preprocess_image(
+            image_path
         )
 
 
-        extracted_text = "\n".join(result).strip()
+        # Load EasyOCR
+        reader = get_reader()
+
+
+        logger.info("Before readtext")
+
+
+        # Lightweight OCR configuration
+        result = reader.readtext(
+            processed_image,
+            detail=0,
+            paragraph=False
+        )
+
+
+        logger.info("After readtext")
+
+
+        extracted_text = "\n".join(
+            result
+        ).strip()
 
 
         logger.info(
-            f"OCR detected {len(result)} text blocks"
+            f"Detected text blocks: {len(result)}"
         )
 
 
         if not extracted_text:
+
             logger.warning(
                 "No text detected from image"
             )
 
 
-        logger.info("EasyOCR completed successfully")
+        logger.info(
+            "OCR completed successfully"
+        )
+
         logger.info("=" * 60)
 
 
         return extracted_text
 
 
+
     except Exception as e:
 
         logger.exception(
-            f"OCR processing failed: {str(e)}"
+            f"OCR failed: {str(e)}"
         )
 
         raise
