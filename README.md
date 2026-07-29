@@ -1,1 +1,2 @@
-# Verdant_AI
+                                                 🌿 Verdant AI – AI-Powered Sustainable Product Analyzer
+
