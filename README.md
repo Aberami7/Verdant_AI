@@ -165,7 +165,15 @@ AI Sustainability Recommendations
 - 📱 Mobile application
 
 ---
+<div align="center">
 
+## 🚀 Live Demo
+
+https://verdantai-production.up.railway.app/
+
+</div>
+
+---
 <div align="center">
 
 ## 🌿 Making Sustainable Product Choices Smarter with AI
