@@ -1,4 +1,3 @@
-<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/31fb04d8-bb9b-4bda-939f-34a7848f247b" /><div align="center">
 
 ![header](https://capsule-render.vercel.app/api?type=waving&color=0:00C853,100:2E7D32&height=220&section=header&text=Verdant%20AI&fontSize=45&fontColor=ffffff)
 
