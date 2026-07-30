@@ -169,7 +169,7 @@ AI Sustainability Recommendations
 
 ## 🚀 Live Demo
 
-https://verdantai-production.up.railway.app/
+https://verdant-ai-1.onrender.com/
 
 </div>
 
