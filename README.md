@@ -2,8 +2,6 @@
 
 ![header](https://capsule-render.vercel.app/api?type=waving&color=0:00C853,100:2E7D32&height=220&section=header&text=Verdant%20AI&fontSize=45&fontColor=ffffff)
 
-# 🌿 Verdant AI
-
 ### AI-Powered Sustainable Product Analyzer
 
 An AI-powered web application that extracts ingredients from product packaging images, evaluates ingredient safety, detects potential greenwashing, and generates personalized sustainability recommendations.
