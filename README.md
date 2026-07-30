@@ -1,4 +1,4 @@
-<div align="center">
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/31fb04d8-bb9b-4bda-939f-34a7848f247b" /><div align="center">
 
 ![header](https://capsule-render.vercel.app/api?type=waving&color=0:00C853,100:2E7D32&height=220&section=header&text=Verdant%20AI&fontSize=45&fontColor=ffffff)
 
@@ -107,6 +107,30 @@ Verdant AI is an AI-powered web application that helps users evaluate the safety
 - 📱 Mobile application
 
 ---
+                                 🌿 Welcome to Verdant AI
+<img width="1920" height="1020" alt="Screenshot 2026-07-29 140607" src="https://github.com/user-attachments/assets/7e602cf3-f758-4325-8eb0-93d0e2a13b14" />
+
+                                 🔐 Secure Authentication
+<img width="1920" height="1020" alt="Screenshot 2026-07-29 140930" src="https://github.com/user-attachments/assets/a60063dc-ca84-4cfa-b3e8-bd10f4ce841c" />
+
+                                 📊 Sustainability Dashboard
+<img width="1920" height="1020" alt="Screenshot 2026-07-30 193041" src="https://github.com/user-attachments/assets/6f4e7620-2092-495d-8161-0f2b29686188" />
+
+                                  📦Smart Product Scanner
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/fd4e3566-f96d-4744-b2a3-7116e0093209" />
+
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/a474e7d4-5e08-44f2-98f6-7519334cb5f3" />
+
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/8f28761d-830c-465d-bc83-fe7c051ac3ed" />
+
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/6e36e315-638e-4d9b-b4de-b937153f07cb" />
+
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/5d4f59d0-3d00-4877-ae9e-5980bbd471bc" />
+
+                                  📚 Analysis History
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/8fee5880-c983-48da-a243-a9e2e4afa491" />
+
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/706ba076-0c02-45ba-89eb-846170ddffe5" />
 
 <div align="center">
 
